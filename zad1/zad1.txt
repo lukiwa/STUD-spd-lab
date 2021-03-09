@@ -1,0 +1,8 @@
+Przykładem procesu możliwego do opisania za pomocą problemu przepływowego może
+być proces wytwarzania oprogramowania. Planowana nowa funkcjonalność najpierw
+musi być ściśle określona przez inżyniera specyfikacji, następnie musi być
+zaimplementowana przez programistę, po czym tester musi ją przetestować.
+
+"Maszynami" w przedstawionym przykładzie byłyby poszczególne osoby, zadaniami
+są kolejne funkcjonalności, a operacjami kolejne kroki w procesie (specyfikacja
+ -> implementacja -> testowanie).
