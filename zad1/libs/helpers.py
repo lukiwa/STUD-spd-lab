@@ -54,3 +54,7 @@ def decay_grouped_tasks_to_2_machines(groupedTasks: GroupedTasks) -> GroupedTask
         result = GroupedTasks(new_result)
 
     return result
+
+def create_random_grouped_task(task_no, machines_no, task_duration_min, task_duration_max) -> GroupedTasks:
+    return GroupedTasks(np.random.randint(task_duration_min, task_duration_max, size=(task_no, machines_no)))
+
