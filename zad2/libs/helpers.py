@@ -6,30 +6,9 @@ from .order import Order
 
 
 def get_c_max(groupedTasks: GroupedTasks, order: Order) -> int:
-    # a[i] -> time when i-th machine is free
-    a = np.zeros(groupedTasks.machines_no())
+    return get_partial_c_max(groupedTasks, order, groupedTasks.tasks_no())
 
-    for taskIdx in range(groupedTasks.tasks_no()):
-        # time when previous machine is free,
-        # relative to machine variable
-        previous_machine_end_time = 0
-
-        for machine in range(groupedTasks.machines_no()):
-
-            task_time = groupedTasks.matrix[order.order[taskIdx], machine]
-
-            if a[machine] > previous_machine_end_time:
-                # operation on previous machine was finished before
-                # operation on current machine could continue
-                a[machine] += task_time
-            else:
-                # next machine were free before end of previous operation
-                a[machine] = previous_machine_end_time + task_time
-
-            previous_machine_end_time = a[machine]
-
-    return a[groupedTasks.machines_no() - 1]
-
+#neh
 def get_partial_c_max(groupedTasks: GroupedTasks, order: Order, tasks_no) -> int:
     # a[i] -> time when i-th machine is free
     a = np.zeros(groupedTasks.machines_no())
