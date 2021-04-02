@@ -1,6 +1,6 @@
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Iterable
 
 @dataclass
 class Order:
-    order: Tuple[int]
+    order: Iterable
