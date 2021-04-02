@@ -54,32 +54,35 @@ class JohnsonResolver(Resolver):
 class NehResolver(Resolver):
     def resolve(self, grouped_tasks: GroupedTasks) -> Order:
         order = get_sorted_task_order(grouped_tasks)
-        current_order = Order([order.order[0]])
+        current_order = Order(deque([order.order[0]]))
 
         # for each task
         for task in range(1, grouped_tasks.tasks_no()):
             min_cmax = float('inf')
             best_order_for_index = None
 
-            # go through all places where you can place a task
-            for index in range(0, len(current_order.order) + 1):
-                #add task at given position
-                current_order.order.insert(index, order.order[task])
+            # add current task to beginning of an order
+            current_order.order.appendleft(order.order[task])
+            foo = current_order.order
 
+            # go through all places where you can place a task
+            for index in range(0, task + 1):
                 #calculate c_max with task at this position
                 tmp_cmax = get_partial_c_max(grouped_tasks, current_order, len(current_order.order))
 
                 #check if it is better, if yes, this is new best order
                 if min_cmax > tmp_cmax:
-                    # copies are expensive, copy only when neccessary
-                    best_order_for_index = Order(current_order.order.copy())
+                    # remember index for which best order occured
+                    best_order_for_index = index
                     min_cmax = tmp_cmax
 
-                # remove inserted element
-                current_order.order.pop(index)
+                # don't go inside on last loop
+                if index != task:
+                    # advance added task to next index
+                    foo[index], foo[index+1] = foo[index+1], foo[index]
 
-            #pragmatic sanity check
-            assert best_order_for_index is not None
-            current_order = best_order_for_index
+            # pop last item (task added in line 65)
+            current_order.order.pop()
+            current_order.order.insert(best_order_for_index, order.order[task])
 
         return current_order

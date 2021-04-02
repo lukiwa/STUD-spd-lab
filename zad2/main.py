@@ -8,7 +8,7 @@ from libs.resolver import NehResolver, BruteForceResolver, JohnsonResolver
 
 def main():
     #plot = GanttPlot()
-    task = load_file("data102.txt")
+    task = load_file("data114.txt")
 
     #plot.InsertTaskGroup(task)
 
