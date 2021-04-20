@@ -85,12 +85,20 @@ def get_sorted_task_order(groupedTasks: GroupedTasks) -> Order:
 def insert_into_task_order(order : Order, index, task_no) -> Order:
     #some hacky method to add task at given positon to a tuple
     new_order = []
-    if type(order.order) == int:    
+    if type(order.order) == int:
         #problems occured when tuple size was 1, workaround
         new_order.insert(0, order.order)
     else:
         new_order = list(order.order)
 
-    
+
     new_order.insert(index, task_no)
     return Order(new_order)
+
+
+def time_resolve(resolver, tasks: GroupedTasks):
+    from datetime import datetime
+    start = datetime.now()
+    result = resolver.resolve(tasks)
+    end = datetime.now()
+    return (result, end - start)

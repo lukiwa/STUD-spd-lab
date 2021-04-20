@@ -37,8 +37,10 @@ class BruteForceResolver(Resolver):
         return Order(best_order)
 
 
-
 class JohnsonResolver(Resolver):
+    def __repr__(self) -> str:
+        return 'JohnsonResolver'
+
     def resolve(self, grouped_tasks: GroupedTasks) -> Order:
         grouped_tasks = decay_grouped_tasks_to_2_machines(grouped_tasks)
 
@@ -58,8 +60,10 @@ class JohnsonResolver(Resolver):
         return Order(tuple(chain(l1, l2)))
 
 
-
 class NehResolver(Resolver):
+    def __repr__(self):
+        return 'NehResolver'
+
     def resolve(self, grouped_tasks: GroupedTasks) -> Order:
         order = get_sorted_task_order(grouped_tasks)
         current_order = Order(deque([order.order[0]]))
@@ -96,45 +100,144 @@ class NehResolver(Resolver):
         return current_order
 
 
-class TsResolver(Resolver):
-    def __init__(self, neighbours_max, first_order=None):
-        self.neighbours_max = neighbours_max
-        self.first_order = first_order
+class DecisionGenerator:
+    class Decision:
+        def apply(self, order: Order):
+            raise NotImplementedError()
 
-    def gen_idx(self, max):
+        def revert(self, order: Order):
+            raise NotImplementedError()
+
+    def random_decision(self, order: Order):
+        raise NotImplementedError()
+
+
+class SwapDecisionGenerator(DecisionGenerator):
+    class SwapDecision(DecisionGenerator.Decision):
+        def __init__(self, idx_a, idx_b):
+            self.idx_a = idx_a
+            self.idx_b = idx_b
+
+        def apply(self, order: Order):
+            f = order.order
+            f[self.idx_a], f[self.idx_b] = f[self.idx_b], f[self.idx_a]
+
+        def revert(self, order: Order):
+            self.apply(order)
+
+    def random_decision(self, order: Order):
+        return self.SwapDecision(*self._gen_idx(len(order.order) - 1))
+
+    def _gen_idx(self, max):
         idx_a = randint(0, max)
         idx_b = randint(0, max)
         while idx_a == idx_b:
             idx_b = randint(0, max)
         return (idx_a, idx_b)
 
-    class SwapDecision:
-        def __init__(self, idx_a, idx_b):
-            self.idx_a = idx_a
-            self.idx_b = idx_b
+    def __repr__(self):
+        return 'SwapDecision'
 
-        def __call__(self, order: Order):
+
+class InsertDecisionGenerator(DecisionGenerator):
+    class InsertDecision(DecisionGenerator.Decision):
+        def __init__(self, idx_from, idx_to):
+            self.idx_from = idx_from
+            self.idx_to = idx_to
+
+        def apply(self, order: Order):
             f = order.order
-            f[self.idx_a], f[self.idx_b] = f[self.idx_b], f[self.idx_a]
+            f[self.idx_from:self.idx_to] = np.roll(f[self.idx_from:self.idx_to], -1)
+
+        def revert(self, order: Order):
+            f = order.order
+            f[self.idx_from:self.idx_to] = np.roll(f[self.idx_from:self.idx_to], 1)
+
+    def random_decision(self, order: Order):
+        return self.InsertDecision(*self._gen_idx(len(order.order) - 1))
+
+    def _gen_idx(self, max):
+        idx_a = randint(0, max)
+        idx_b = randint(0, max)
+        while idx_a == idx_b:
+            idx_b = randint(0, max)
+        return (idx_a, idx_b)
+
+    def __repr__(self):
+        return 'InsertDecision'
+
+class StopOption:
+    def should_stop(self) -> bool:
+        raise NotImplementedError()
+
+    def start(self):
+        raise NotImplementedError()
+
+    def next_iter(self):
+        raise NotImplementedError()
+
+class TimeStopOption(StopOption):
+    def __init__(self, duration):
+        self.duration = duration
+
+    def start(self):
+        self.start_time = time()
+
+    def should_stop(self) -> bool:
+        return time() > self.start_time + self.duration
+
+    def next_iter(self):
+        pass
+
+    def __repr__(self):
+        return f'TimeStop({self.duration})'
+
+class IterNoStopOption(StopOption):
+    def __init__(self, max_iter):
+        self.max_iter = max_iter
+
+    def start(self):
+        self.iter = 0
+
+    def should_stop(self):
+        return self.iter >= self.max_iter
+
+    def next_iter(self):
+        self.iter += 1
+
+    def __repr__(self):
+        return f'IterNoStop({self.max_iter})'
 
 
-    def random_swap_decision(self, order):
-        return self.SwapDecision(*self.gen_idx(len(order.order) - 1))
+class TsResolver(Resolver):
+    def __init__(self,
+            neighbours_max=10,
+            first_order: Resolver=JohnsonResolver(),
+            decision_generator: DecisionGenerator=SwapDecisionGenerator(),
+            tabu_list_length=10,
+            stop_option: StopOption=TimeStopOption(60)):
+        self.neighbours_max = neighbours_max
+        self.first_order = first_order
+        self.stop_option = stop_option
+        self.decision_generator = decision_generator
+        self.tabu_list_length = tabu_list_length
 
-    def gen_order_decision(self, order: Order) -> Tuple[Order, SwapDecision]:
+    def __repr__(self):
+        return f'TsResolver:neighbours={self.neighbours_max}:first_order={self.first_order}:{self.decision_generator}:tabu_list_length={self.tabu_list_length}:stop_option={self.stop_option}'
+
+    def gen_order_decision(self, order: Order) -> Tuple[Order, DecisionGenerator.Decision]:
         for _ in range(self.neighbours_max):
-            swap_decision = self.random_swap_decision(order)
+            decision = self.decision_generator.random_decision(order)
 
-            # apply swap on current order
-            swap_decision(order)
+            # apply decision on current order
+            decision.apply(order)
 
             # yield order only for c_max evaulation
             # as it will change
-            yield (order, swap_decision)
+            yield (order, decision)
 
             # revert to original order
-            swap_decision(order)
-
+            decision.revert(order)
 
     class TabuList:
         def __init__(self, max_size):
@@ -143,12 +246,9 @@ class TsResolver(Resolver):
             self.tabu_set = set()
 
         def __contains__(self, obj):
-            #return obj in self.tabu_set
             return obj in self.tabu_set
 
         def add(self, obj):
-            assert obj not in self
-
             if len(self.tabu_history) >= self.max_size:
                 self.tabu_set.remove(self.tabu_history[0])
                 self.tabu_history.popleft()
@@ -156,23 +256,17 @@ class TsResolver(Resolver):
             self.tabu_history.append(obj)
             self.tabu_set.add(obj)
 
-
     def resolve(self, grouped_tasks: GroupedTasks) -> Order:
-        current = self.first_order
+        current = self.first_order.resolve(grouped_tasks)
         current = NpOrder(np.array(current.order))
         best = NpOrder(np.copy(current.order))
         best_c_max = get_c_max(grouped_tasks, best)
 
-        tabu_list = self.TabuList(1000)
-        stop_time = time() + .5 * 60
+        tabu_list = self.TabuList(self.tabu_list_length)
+        self.stop_option.start()
 
-        iteration = 0
-
-        while time() < stop_time:
-            iteration += 1
-
-            order_decisions = ((order, swap_decision) for order, swap_decision in self.gen_order_decision(current)
-                if order not in tabu_list)
+        while not self.stop_option.should_stop():
+            order_decisions = ((order, swap_decision) for order, swap_decision in self.gen_order_decision(current) if order not in tabu_list)
 
             # order is dynamically changed current
             _, decision = min(order_decisions, default=(None, None), key=lambda order_and_decision: get_c_max(grouped_tasks, order_and_decision[0]))
@@ -181,8 +275,7 @@ class TsResolver(Resolver):
                 continue
 
             # generate min order in current
-            decision(current)
-
+            decision.apply(current)
 
             # add to tabu list
             not_writeable_copy = np.copy(current.order)
@@ -194,6 +287,6 @@ class TsResolver(Resolver):
                 best_c_max = current_c_max
                 best = NpOrder(np.copy(current.order))
 
-        print(f'Tabu list iterations: {iteration}')
+            self.stop_option.next_iter()
 
         return best

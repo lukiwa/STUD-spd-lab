@@ -1,46 +1,46 @@
-import datetime
+from collections import defaultdict
+import datetime, csv
 
-from libs.helpers import get_c_max, create_random_grouped_task
+from libs.helpers import get_c_max, create_random_grouped_task, time_resolve
 from libs.load_file import load_file
-from libs.resolver import NehResolver, BruteForceResolver, JohnsonResolver, TsResolver
+from libs.resolver import InsertDecisionGenerator, IterNoStopOption, NehResolver, BruteForceResolver, JohnsonResolver, SwapDecisionGenerator, TimeStopOption, TsResolver
 
 #from libs.gantt_plot import GanttPlot
 
 def main():
-    #plot = GanttPlot()
-    task = load_file("data102.txt")
+    filenames = ['data78.txt', 'data79.txt', 'data80.txt']
+    resolvers = [JohnsonResolver(), NehResolver()]
 
-    #plot.InsertTaskGroup(task)
-
-    start = datetime.datetime.now()
-    print("START: " + str(start))
-    #order_brute = BruteForceResolver().resolve(task)
-    order_johnson = JohnsonResolver().resolve(task)
-    #order_neh = NehResolver().resolve(task)
-    order_tabu = TsResolver(10, order_johnson).resolve(task)
-    end = datetime.datetime.now()
-    delta = end - start
-
-    #cmax_brute = get_c_max(task, order_brute)
-    cmax_johnson = get_c_max(task, order_johnson)
-    #cmax_neh = get_c_max(task, order_neh)
-    cmax_tabu = get_c_max(task, order_tabu)
-
-    #print("BRUTE: " + str(cmax_brute))
-    print("JOHNSON: " + str(cmax_johnson))
-    #print("NEH: " + str(cmax_neh))
-    print(f"TABU: {cmax_tabu}")
-    print("ELAPSED: " + str(delta))
+    for neighbours_max in [10, 100]:
+        for first_order in [JohnsonResolver(), NehResolver()]:
+            for decision_generator in [SwapDecisionGenerator(), InsertDecisionGenerator()]:
+                for tabu_list_length in [10, 100]:
+                    for stop_option in [TimeStopOption(10), IterNoStopOption(150)]:
+                        resolvers.append(TsResolver(neighbours_max, first_order, decision_generator, tabu_list_length, stop_option))
 
 
-    #plot.InsertOrder(order_johnson)
-    #plot.Show("Johnson")
-    #plot.InsertOrder(order_brute)
-    #plot.Show("Brute")
-    #plot.InsertOrder(order_neh)
+    global_result = defaultdict(lambda: dict())
+    filename_to_tasks = {}
 
-    #plot.Show("Neh")
+    for filename in filenames:
+        grouped_tasks = load_file(filename)
+        filename_to_tasks[filename] = grouped_tasks
+        for resolver in resolvers:
+            result, time = time_resolve(resolver, grouped_tasks)
+            global_result[resolver][filename] = (result, time)
 
+            print (f'Done: {filename}--{resolver}')
+
+    with open('output.csv', 'w', newline='') as output:
+        writer = csv.writer(output)
+
+        for resolver, filename_to_results in global_result.items():
+            writer.writerow(('zadania', 'c_max', 'czas'))
+            writer.writerow((resolver,))
+            for filename, result_and_time in filename_to_results.items():
+                result, time = result_and_time
+                writer.writerow((filename, get_c_max(filename_to_tasks[filename], result), str(time)))
+            writer.writerow(())
 
 
 
