@@ -3,6 +3,8 @@ import numpy as np
 
 from .grouped_tasks import GroupedTasks
 from .order import Order
+from libs.rpq_resolver import RPQResolver
+from typing import Iterable, Tuple
 
 
 def get_c_max(groupedTasks: GroupedTasks, order: Order) -> int:
@@ -102,3 +104,11 @@ def time_resolve(resolver, tasks: GroupedTasks):
     result = resolver.resolve(tasks)
     end = datetime.now()
     return (result, end - start)
+
+def RPQtime_resolve(resolver, tasks: Iterable):
+    from datetime import datetime
+    start = datetime.now()
+    result = resolver(queue=tasks)
+    end = datetime.now()
+    return (result, end - start)
+
