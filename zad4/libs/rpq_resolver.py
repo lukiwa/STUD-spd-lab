@@ -84,9 +84,9 @@ class SchrageN2Resolver(RPQResolver):
 
 class SchrageLogNResolver(RPQResolver):
     def resolve(self, queue: list) -> Order:
-        G = PriorityQueue(compare = lambda task1, task2:  task1.Q > task2.Q )
+        G = PriorityQueue(compare = lambda task1, task2:  task1.Q >= task2.Q )
         
-        N = PriorityQueue(compare = lambda task1, task2:  task1.R < task2.R )
+        N = PriorityQueue(compare = lambda task1, task2:  task1.R <= task2.R )
         for task in queue:
             N.push(task)
 
@@ -120,8 +120,8 @@ class SchrageLogNResolver(RPQResolver):
 
         t = 0
 
-        G = PriorityQueue(compare = lambda task1, task2:  task1.Q > task2.Q )
-        N = PriorityQueue(compare = lambda task1, task2:  task1.R < task2.R )
+        G = PriorityQueue(compare = lambda task1, task2:  task1.Q >= task2.Q )
+        N = PriorityQueue(compare = lambda task1, task2:  task1.R <= task2.R )
         for task in queue:
             N.push(task)
 

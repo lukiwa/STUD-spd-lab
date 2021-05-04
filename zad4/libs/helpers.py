@@ -5,12 +5,15 @@ from .grouped_tasks import GroupedTasks
 from .order import Order
 from libs.rpq_resolver import RPQResolver
 from typing import Iterable, Tuple
+from .rpq_task import RPQTask
 
 
 def get_c_max(groupedTasks: GroupedTasks, order: Order) -> int:
     return get_partial_c_max(groupedTasks, order, groupedTasks.tasks_no())
 
-#neh
+# neh
+
+
 def get_partial_c_max(groupedTasks: GroupedTasks, order: Order, tasks_no) -> int:
     # a[i] -> time when i-th machine is free
     a = np.zeros(groupedTasks.machines_no())
@@ -69,30 +72,43 @@ def decay_grouped_tasks_to_2_machines(groupedTasks: GroupedTasks) -> GroupedTask
 def create_random_grouped_task(task_no, machines_no, task_duration_min, task_duration_max) -> GroupedTasks:
     return GroupedTasks(np.random.randint(task_duration_min, task_duration_max, size=(task_no, machines_no)))
 
-#NEH
+
+def create_random_rpq_task_queue(task_no, min_value, max_value) -> Iterable:
+    queue = []
+    for i in range(task_no):
+        queue.append(RPQTask(i, np.random.randint(min_value, max_value), np.random.randint(
+            min_value, max_value), np.random.randint(min_value, max_value)))
+
+    return queue
+
+
+# NEH
 def task_processing_time_on_all_machines(task_no, groupedTasks: GroupedTasks):
     time = 0
     for i in range(groupedTasks.machines_no()):
         time += groupedTasks.matrix[task_no, i]
     return time
 
-#NEH
+# NEH
+
+
 def get_sorted_task_order(groupedTasks: GroupedTasks) -> Order:
     sequence = []
     for j in range(groupedTasks.tasks_no()):
         sequence.append(j)
     return Order(sorted(sequence, key=lambda task_no: task_processing_time_on_all_machines(task_no, groupedTasks), reverse=True))
 
-#NEH
-def insert_into_task_order(order : Order, index, task_no) -> Order:
-    #some hacky method to add task at given positon to a tuple
+# NEH
+
+
+def insert_into_task_order(order: Order, index, task_no) -> Order:
+    # some hacky method to add task at given positon to a tuple
     new_order = []
     if type(order.order) == int:
-        #problems occured when tuple size was 1, workaround
+        # problems occured when tuple size was 1, workaround
         new_order.insert(0, order.order)
     else:
         new_order = list(order.order)
-
 
     new_order.insert(index, task_no)
     return Order(new_order)
@@ -105,10 +121,11 @@ def time_resolve(resolver, tasks: GroupedTasks):
     end = datetime.now()
     return (result, end - start)
 
+
 def RPQtime_resolve(resolver, tasks: Iterable):
     from datetime import datetime
     start = datetime.now()
     result = resolver(queue=tasks)
     end = datetime.now()
-    return (result, end - start)
-
+    delta = end - start
+    return (result, delta.total_seconds() * 1000)
