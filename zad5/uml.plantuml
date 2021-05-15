@@ -1,0 +1,21 @@
+@startuml
+interface Resolver {
+    {abstract} Order resolve(Task task)
+}
+
+class BruteForceResolver
+class JohnsonResolver
+
+Resolver <|-down- BruteForceResolver
+Resolver <|-down- JohnsonResolver
+Resolver <|-down- NehResolver
+
+class GroupedTasks {
+    numpy.ndarray matrix
+}
+
+class Order {
+    Tuple[int] order
+}
+
+@enduml

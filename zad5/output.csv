@@ -1,0 +1,28 @@
+zadania;c_max;czas
+<bound method SchrageN2Resolver.resolve of <libs.rpq_resolver.SchrageN2Resolver object at 0x7f7c219322e8>>
+test.txt;3109;0:00:00.000813
+in50.txt;1513;0:00:00.001191
+in100.txt;3076;0:00:00.003367
+in200.txt;6416;0:00:00.012559
+
+zadania;c_max;czas
+<bound method SchrageN2Resolver.pmtn_resolve of <libs.rpq_resolver.SchrageN2Resolver object at 0x7f7c2190a518>>
+test.txt;3026;0:00:00.001611
+in50.txt;1492;0:00:00.001490
+in100.txt;3070;0:00:00.003782
+in200.txt;6398;0:00:00.021663
+
+zadania;c_max;czas
+<bound method SchrageLogNResolver.resolve of <libs.rpq_resolver.SchrageLogNResolver object at 0x7f7c218dc6d8>>
+test.txt;3109;0:00:00.000766
+in50.txt;1513;0:00:00.001211
+in100.txt;3076;0:00:00.001187
+in200.txt;6416;0:00:00.003906
+
+zadania;c_max;czas
+<bound method SchrageLogNResolver.pmtn_resolve of <libs.rpq_resolver.SchrageLogNResolver object at 0x7f7bdf972e48>>
+test.txt;3026;0:00:00.000939
+in50.txt;1492;0:00:00.000763
+in100.txt;3070;0:00:00.001379
+in200.txt;6398;0:00:00.004359
+
