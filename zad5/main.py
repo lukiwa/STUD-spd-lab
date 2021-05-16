@@ -5,31 +5,41 @@ import csv
 
 from libs.rpq_task import RPQTask
 from libs.load_file import rpq_load_file
-from libs.rpq_resolver import SchrageN2Resolver, SchrageLogNResolver
+from libs.rpq_resolver import SchrageN2Resolver, SchrageLogNResolver, CarlierResolver
 from libs.priority_queue import PriorityQueue
-from libs.helpers import RPQtime_resolve, create_random_rpq_task_queue
+from libs.helpers import RPQtime_resolve, create_random_rpq_task_queue, get_c_max_rpq
 
 # from libs.gantt_plot import GanttPlot
 
 
 def main():
-    
-    tasks = []
-    for i in range(10, 500):
-        tasks.append(create_random_rpq_task_queue(i, 2, 2000))
 
-    resolvers = [SchrageN2Resolver().resolve, SchrageN2Resolver().pmtn_resolve,
-                 SchrageLogNResolver().resolve, SchrageLogNResolver().pmtn_resolve]    
+    tasks = [
+        rpq_load_file('in50.txt'),
+        rpq_load_file('in100.txt'),
+        rpq_load_file('in200.txt')
+        #rpq_load_file('data.001'),
+        #rpq_load_file('data.002'),
+        #rpq_load_file('data.003')
+    ]
+
+    resolvers_factory = [
+        lambda: SchrageLogNResolver().resolve,
+        lambda: CarlierResolver().resolve
+        ]
 
     global_result = defaultdict(lambda: dict())
 
     for task in tasks:
-        for resolver in resolvers:
-            [[order, cmax], time] = RPQtime_resolve(resolver, task.copy())
+        for resolver in resolvers_factory:
+            from copy import deepcopy
+            [[order, cmax], time] = RPQtime_resolve(resolver(), deepcopy(task))
             global_result[resolver][len(task)] = (cmax, time)
             print(f'Done: {len(task)}--{resolver}')
             print("Time: " + str(time))
-            print("Cmax: " + str(cmax) + "\n")
+            print("Cmax: " + str(cmax) + ", other cmax: " + str(get_c_max_rpq(task, order)))
+            print("Result: " + str(order))
+            print()
 
     with open('output2.csv', 'w', newline='') as output:
         writer = csv.writer(output, delimiter=';')

@@ -29,10 +29,12 @@ def rpq_load_file(filename: str):
 
     with open(filename) as file:
         first_line = file.readline()
-        tasks, columns = tuple(int(s) for s in first_line.split())
+        input = tuple(int(s) for s in first_line.split())
 
-        # always 3 columns - R, P, Q
-        assert columns == 3
+        if len(input) == 2:
+            assert input[1] == 3
+
+        tasks = input[0]
 
         for task in range(tasks):
             line = file.readline()

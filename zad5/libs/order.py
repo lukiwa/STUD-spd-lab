@@ -11,6 +11,11 @@ class Order:
     def __eq__(self, other):
         return self.order == other.order
 
+    def __getitem__(self, idx):
+        if isinstance(idx, range):
+            print('hello')
+        return self.order[idx]
+
 class NpOrder(Order):
     def __hash__(self):
         return hash(self.order.tostring())

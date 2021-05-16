@@ -1,5 +1,6 @@
 from typing import List, Tuple
 import numpy as np
+import math
 
 from .grouped_tasks import GroupedTasks
 from .order import Order
@@ -129,3 +130,18 @@ def RPQtime_resolve(resolver, tasks: Iterable):
     end = datetime.now()
     delta = end - start
     return (result, delta.total_seconds() * 1000)
+
+
+def get_c_max_rpq(queue, order):
+    global_time = -math.inf
+    c_max = -math.inf
+
+    for task_index in order.order:
+        if global_time < queue[task_index].R:
+            global_time = queue[task_index].R
+        global_time += queue[task_index].P
+        if global_time + queue[task_index].Q > c_max:
+            c_max = global_time + queue[task_index].Q
+
+    assert c_max != -math.inf
+    return c_max
