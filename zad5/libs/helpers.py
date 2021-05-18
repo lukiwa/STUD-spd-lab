@@ -4,7 +4,6 @@ import math
 
 from .grouped_tasks import GroupedTasks
 from .order import Order
-from libs.rpq_resolver import RPQResolver
 from typing import Iterable, Tuple
 from .rpq_task import RPQTask
 

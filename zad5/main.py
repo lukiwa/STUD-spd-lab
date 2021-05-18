@@ -15,25 +15,29 @@ from libs.helpers import RPQtime_resolve, create_random_rpq_task_queue, get_c_ma
 def main():
 
     tasks = [
-        rpq_load_file('in50.txt'),
-        rpq_load_file('in100.txt'),
-        rpq_load_file('in200.txt')
-        #rpq_load_file('data.001'),
-        #rpq_load_file('data.002'),
-        #rpq_load_file('data.003')
+        #rpq_load_file('in50.txt'),
+        #rpq_load_file('in100.txt'),
+        #rpq_load_file('in200.txt')
+        rpq_load_file('data.001'),
+        rpq_load_file('data.002'),
+        rpq_load_file('data.003')
+        #rpq_load_file('data.004')
     ]
+    #+ [rpq_load_file(f'data.00{i}') for i in range(5, 9)]
 
     resolvers_factory = [
-        lambda: SchrageLogNResolver().resolve,
+        #lambda: SchrageLogNResolver().resolve,
+        #lambda: SchrageLogNResolver().pmtn_resolve
         lambda: CarlierResolver().resolve
         ]
 
     global_result = defaultdict(lambda: dict())
 
     for task in tasks:
+        task_t = tuple(task)
         for resolver in resolvers_factory:
             from copy import deepcopy
-            [[order, cmax], time] = RPQtime_resolve(resolver(), deepcopy(task))
+            [[order, cmax], time] = RPQtime_resolve(resolver(), task_t)
             global_result[resolver][len(task)] = (cmax, time)
             print(f'Done: {len(task)}--{resolver}')
             print("Time: " + str(time))

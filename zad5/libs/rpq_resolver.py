@@ -1,10 +1,13 @@
 from collections import deque
+from libs.helpers import get_c_max_rpq
 from .order import Order
 from .rpq_task import RPQTask
 import numpy as np
 from typing import Iterable, Tuple
 from .priority_queue import PriorityQueue
 import math
+from queue import Queue as Queue_synchronized
+from copy import deepcopy
 
 class RPQResolver:
     def resolve(self, queue: Iterable) -> Order:
@@ -82,8 +85,8 @@ class SchrageN2Resolver(RPQResolver):
 
 class SchrageLogNResolver(RPQResolver):
     def resolve(self, queue: list) -> Order:
-        G = PriorityQueue(compare = lambda task1, task2:  task1.Q > task2.Q )
-        N = PriorityQueue(compare = lambda task1, task2:  task1.R < task2.R )
+        G = PriorityQueue(compare = lambda task1, task2:  task1.Q >= task2.Q )
+        N = PriorityQueue(compare = lambda task1, task2:  task1.R <= task2.R )
 
         for task in queue:
             N.push(task)
@@ -111,16 +114,14 @@ class SchrageLogNResolver(RPQResolver):
         return [Order(order), cmax]
 
     def pmtn_resolve(self, queue: list) -> Order:
-        #ready_task = RPQTask(0,0,0,0)
-        #task_on_machine = RPQTask(0,0,0, np.iinfo(np.uint16).max)
         task_on_machine = None
 
-        G = PriorityQueue(compare = lambda task1, task2:  task1.Q > task2.Q )
-        N = PriorityQueue(compare = lambda task1, task2:  task1.R < task2.R )
+        G = PriorityQueue(compare = lambda task1, task2:  task1.Q >= task2.Q )
+        N = PriorityQueue(compare = lambda task1, task2:  task1.R <= task2.R )
         for task in queue:
             N.push(task)
 
-        t = N.peek().R
+        t = 0
 
         order = []
         cmax = 0
@@ -148,14 +149,51 @@ class SchrageLogNResolver(RPQResolver):
 
         return [Order(order), cmax]
 
-class CarlierResolver(RPQResolver):
-    SCHRAGE_RESOLVER = SchrageLogNResolver()
 
+class CarlierDoneException(Exception):
+    pass
+
+def range_helper(a, b):
+    if a < b:
+        return range(a, b)
+    else:
+        return range(b, a)
+
+class CarlierResolver(RPQResolver):
     def __init__(self):
-        self.upper_bound_c_max = None
+        self.upper_bound_c_max = math.inf
         self.pi_star_order = None
 
+        #self.tasks_from_recursion = Queue_synchronized()
         self.tasks_from_recursion = deque()
+
+    def _find_a(self, order, queue, c_max, b_order_index):
+        b_task = queue[order[b_order_index]]
+        a_order_index = None
+
+        for order_index, task_index in enumerate(order.order):
+            task = queue[task_index]
+            if task.R + sum(queue[order[s]].P for s in range(order_index, b_order_index + 1)) + b_task.Q == c_max:
+                a_order_index = order_index
+
+        assert a_order_index is not None
+        return a_order_index
+
+    def _find_b(self, order, queue, c_max):
+        t = 0
+        b_order_index = None
+
+        for order_index, task_index in enumerate(order.order):
+            task = queue[task_index]
+            if task.R > t:
+                t = task.R
+            t += task.P
+            if t + task.Q == c_max:
+                b_order_index = order_index
+
+        assert b_order_index is not None
+        return b_order_index
+
 
     def _find_a_b(self, order, queue, c_max):
         t_global_current = -math.inf
@@ -171,7 +209,7 @@ class CarlierResolver(RPQResolver):
                 b_order_index = order_index
 
         assert a_order_index is not None and b_order_index is not None
-
+        assert a_order_index <= b_order_index
         return a_order_index, b_order_index
 
     def _find_c(self, order, queue, a_order_index, b_order_index):
@@ -185,82 +223,83 @@ class CarlierResolver(RPQResolver):
         return c_order_index
 
 
-    def _impl(self, queue: Iterable, swapped = False) -> Order:
+    def r_func(self, K, queue, order):
+        return min(queue[order[k]].R for k in K)
+
+    def q_func(self, K, queue, order):
+        return min(queue[order[k]].Q for k in K)
+
+    def p_func(self, K, queue, order):
+        return sum(queue[order[k]].P for k in K)
+
+    def h_func(self, K, queue, order):
+        return self.r_func(K, queue, order) + self.q_func(K, queue, order) + self.p_func(K, queue, order)
+
+
+    def _impl(self, queue: Iterable) -> Order:
         from libs.helpers import get_c_max_rpq
+        from copy import deepcopy
 
-        u_order, u_cmax = self.SCHRAGE_RESOLVER.resolve([*queue])
-        u_cmax_n = get_c_max_rpq(queue, u_order)
+        u_order, u_cmax = SchrageLogNResolver().resolve(tuple(queue))
 
-        assert u_cmax == u_cmax_n
-
-        if self.upper_bound_c_max is None or u_cmax < self.upper_bound_c_max:
+        if u_cmax < self.upper_bound_c_max:
             self.upper_bound_c_max = u_cmax
-            self.pi_star_order = u_order
+            self.pi_star_order = deepcopy(u_order)
 
-        a_order_index, b_order_index = self._find_a_b(u_order, queue, u_cmax)
+        #a_order_index, b_order_index = self._find_a_b(u_order, queue, u_cmax)
+        b_order_index = self._find_b(u_order, queue, u_cmax)
+        a_order_index = self._find_a(u_order, queue, u_cmax, b_order_index)
         c_order_index = self._find_c(u_order, queue, a_order_index, b_order_index)
 
         if c_order_index is None:
+            #raise CarlierDoneException()
             return
 
         K = [*range(c_order_index + 1, b_order_index + 1)]
-        assert len(K) > 0
-        r_k = lambda K: min(K, key = lambda k: queue[u_order[k]].R)
-        q_k = lambda K: min(K, key = lambda k: queue[u_order[k]].Q)
-        p_k = lambda K: sum(queue[u_order[k]].P for k in K)
 
-        only_k = {
-            'r_k': r_k(K),
-            'q_k': q_k(K),
-            'p_k': p_k(K)
-        }
-
-        k_plus_c = {
-            'r_k': r_k([c_order_index] + K),
-            'q_k': q_k([c_order_index] + K),
-            'p_k': p_k([c_order_index] + K)
-        }
-
-        if swapped:
-            self._recursion_on_q(queue, u_order, c_order_index, only_k, k_plus_c, swapped)
-            self._recursion_on_r(queue, u_order, c_order_index, only_k, k_plus_c, swapped)
-        else:
-            self._recursion_on_r(queue, u_order, c_order_index, only_k, k_plus_c, swapped)
-            self._recursion_on_q(queue, u_order, c_order_index, only_k, k_plus_c, swapped)
+        self._recursion_on_r(queue, u_order, c_order_index, K)
+        self._recursion_on_q(queue, u_order, c_order_index, K)
 
 
-    def _recursion_on_r(self, queue, order, c_order_index, only_k, k_plus_c, swapped):
+    def _recursion_on_r(self, queue, order, c_order_index, K):
         r_task = queue[order[c_order_index]]
         r_task_r_old = r_task.R
-        r_task.R = max(r_task.R, only_k['r_k'] + only_k['p_k'])
+        r_task.R = max(r_task.R, self.r_func(K, queue, order) + self.p_func(K, queue, order))
 
-        _, least_bound_c_max = self.SCHRAGE_RESOLVER.pmtn_resolve([*queue])
-        least_bound_c_max = max(least_bound_c_max, sum(only_k.values()), sum(k_plus_c.values()))
+        _, least_bound_c_max = SchrageLogNResolver().pmtn_resolve([*queue])
+        least_bound_c_max = max(least_bound_c_max, self.h_func(K, queue, order), self.h_func(K + [c_order_index], queue, order))
         if least_bound_c_max < self.upper_bound_c_max:
             #self._impl(queue)
-            from copy import deepcopy
-            self.tasks_from_recursion.append(deepcopy(queue))
+            self.tasks_from_recursion.append((deepcopy(queue), self.upper_bound_c_max))
         r_task.R = r_task_r_old
 
-    def _recursion_on_q(self, queue, order, c_order_index, only_k, k_plus_c, swapped):
+    def _recursion_on_q(self, queue, order, c_order_index, K):
         r_task = queue[order[c_order_index]]
         r_task_q_old = r_task.Q
-        r_task.Q = max(r_task.Q, only_k['q_k'] + only_k['p_k'])
+        r_task.Q = max(r_task.Q, self.q_func(K, queue, order) + self.p_func(K, queue, order))
 
-        _, least_bound_c_max = self.SCHRAGE_RESOLVER.pmtn_resolve([*queue])
-        least_bound_c_max = max(least_bound_c_max, sum(only_k.values()), sum(k_plus_c.values()))
+        _, least_bound_c_max = SchrageLogNResolver().pmtn_resolve([*queue])
+        least_bound_c_max = max(least_bound_c_max, self.h_func(K, queue, order), self.h_func(K + [c_order_index], queue, order))
         if least_bound_c_max < self.upper_bound_c_max:
             #self._impl(queue)
-            from copy import deepcopy
-            self.tasks_from_recursion.append(deepcopy(queue))
+            self.tasks_from_recursion.append((deepcopy(queue), self.upper_bound_c_max))
         r_task.Q = r_task_q_old
 
     def resolve(self, queue: Iterable) -> Order:
-        self._impl(queue)
+        try:
+            self._impl(deepcopy(queue))
 
-        while len(self.tasks_from_recursion) > 0:
-            self._impl(self.tasks_from_recursion[0])
-            self.tasks_from_recursion.popleft()
+            #from multiprocessing import Pool
 
-        assert isinstance(self.pi_star_order, Order)
-        return [self.pi_star_order, self.upper_bound_c_max]
+            while len(self.tasks_from_recursion) > 0:
+                tasks, upper_bound = self.tasks_from_recursion[0]
+                self.tasks_from_recursion.popleft()
+                self._impl(tasks)
+
+
+        except CarlierDoneException:
+            pass
+
+        return [
+            self.pi_star_order,
+            self.upper_bound_c_max]
