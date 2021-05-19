@@ -18,10 +18,11 @@ def main():
         #rpq_load_file('in50.txt'),
         #rpq_load_file('in100.txt'),
         #rpq_load_file('in200.txt')
+        #rpq_load_file('data.000')
         rpq_load_file('data.001'),
-        rpq_load_file('data.002'),
-        rpq_load_file('data.003')
+        #rpq_load_file('data.003'),
         #rpq_load_file('data.004')
+        #rpq_load_file('przyklad.txt')
     ]
     #+ [rpq_load_file(f'data.00{i}') for i in range(5, 9)]
 
@@ -29,6 +30,8 @@ def main():
         #lambda: SchrageLogNResolver().resolve,
         #lambda: SchrageLogNResolver().pmtn_resolve
         lambda: CarlierResolver().resolve
+        #lambda: SchrageN2Resolver().resolve,
+        #lambda: SchrageN2Resolver().pmtn_resolve
         ]
 
     global_result = defaultdict(lambda: dict())
@@ -36,8 +39,7 @@ def main():
     for task in tasks:
         task_t = tuple(task)
         for resolver in resolvers_factory:
-            from copy import deepcopy
-            [[order, cmax], time] = RPQtime_resolve(resolver(), task_t)
+            [[order, cmax], time] = RPQtime_resolve(resolver(), [*task_t])
             global_result[resolver][len(task)] = (cmax, time)
             print(f'Done: {len(task)}--{resolver}')
             print("Time: " + str(time))
