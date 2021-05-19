@@ -1,4 +1,5 @@
 from collections import deque
+from os import sched_rr_get_interval
 from libs.helpers import get_c_max_rpq
 from .order import Order
 from .rpq_task import RPQTask
@@ -65,7 +66,11 @@ class SchrageN2Resolver(RPQResolver):
                 N.remove(moved_task)
 
                 if task_on_machine is not None and moved_task.Q > task_on_machine.Q:
-                    task_on_machine.P = t - moved_task.R
+                    task_on_machine = RPQTask(
+                        task_no = task_on_machine.task_no,
+                        R = task_on_machine.R,
+                        P = t - moved_task.R,
+                        Q = task_on_machine.Q)
                     t = moved_task.R
                     if task_on_machine.P > 0:
                         G.append(task_on_machine)
@@ -133,7 +138,11 @@ class SchrageLogNResolver(RPQResolver):
                 G.push(moved_task)
 
                 if task_on_machine is not None and moved_task.Q > task_on_machine.Q:
-                    task_on_machine.P = t - moved_task.R
+                    task_on_machine = RPQTask(
+                        task_no = task_on_machine.task_no,
+                        R = task_on_machine.R,
+                        P = t - moved_task.R,
+                        Q = task_on_machine.Q)
                     t = moved_task.R
                     if task_on_machine.P > 0:
                         G.push(task_on_machine)
@@ -150,31 +159,33 @@ class SchrageLogNResolver(RPQResolver):
 
         return [Order(order), cmax]
 
+from enum import Enum
 
-class CarlierDoneException(Exception):
-    pass
-
-def range_helper(a, b):
-    if a < b:
-        return range(a, b)
-    else:
-        return range(b, a)
+class CarlierStrategy(Enum):
+    Normal = 0
+    BFS = 1
 
 class CarlierResolver(RPQResolver):
-    def __init__(self):
-        pass
+    def __init__(self, strategy: CarlierStrategy, schrage):
+        self.strategy = strategy
+        self.schrage = schrage
+
+    def add_vertex(self, queue, upper_bound: IntPtr, pi_star: Order, u_cmax: int):
+        if self.strategy == CarlierStrategy.Normal:
+            self._impl(queue, upper_bound, pi_star)
+        else:
+            self.tasks_from_recursion.append(((deepcopy(queue), u_cmax)))
 
     @staticmethod
     def _find_a(order, queue, c_max, b_order_index):
         b_task = queue[order[b_order_index]]
-        #a_order_index = None
 
         for order_index, task_index in enumerate(order.order):
             task = queue[task_index]
             if task.R + sum(queue[order[s]].P for s in range(order_index, b_order_index + 1)) + b_task.Q == c_max:
                 return order_index
 
-        raise RuntimeError()
+        raise RuntimeError('a not found')
 
     @staticmethod
     def _find_b(order, queue, c_max):
@@ -227,10 +238,9 @@ class CarlierResolver(RPQResolver):
             + CarlierResolver.p_func(K, queue, order))
 
     def _impl(self, queue: Iterable, upper_bound: IntPtr, pi_star: Order) -> Order:
-        u_order, u_cmax = SchrageN2Resolver().resolve([*queue])
-        #original_c_max = get_c_max_rpq(queue, self.original_queue)
+        u_order, u_cmax = self.schrage().resolve([*queue])
 
-        if u_cmax < u_cmax:
+        if u_cmax < upper_bound.val:
             upper_bound.val = u_cmax
             pi_star.order = deepcopy(u_order.order)
 
@@ -239,64 +249,60 @@ class CarlierResolver(RPQResolver):
         c_order_index = CarlierResolver._find_c(u_order, queue, a_order_index, b_order_index)
 
         if c_order_index is None:
-            #raise CarlierDoneExcption()
             return
 
         K = [*range(c_order_index+1, b_order_index+1)]
 
-        self._recursion_on_r(queue, u_order, c_order_index, K, upper_bound, pi_star)
-        self._recursion_on_q(queue, u_order, c_order_index, K, upper_bound, pi_star)
+        self._recursion_on_r(queue, u_order, c_order_index, K, upper_bound, pi_star, u_cmax)
+        self._recursion_on_q(queue, u_order, c_order_index, K, upper_bound, pi_star, u_cmax)
 
 
 
-    def _recursion_on_r(self, queue, order, c_order_index, K, upper_bound: IntPtr, pi_star: Order):
+    def _recursion_on_r(self, queue, order, c_order_index, K, upper_bound: IntPtr, pi_star: Order, u_cmax):
         r_task = queue[order[c_order_index]]
-        r_task_r_old = r_task.R
-        r_task.R = max(r_task.R, CarlierResolver.r_func(K, queue, order) + CarlierResolver.p_func(K, queue, order))
+        queue[order[c_order_index]] = RPQTask(
+            task_no = r_task.task_no,
+            R = max(r_task.R, CarlierResolver.r_func(K, queue, order) + CarlierResolver.p_func(K, queue, order)),
+            P = r_task.P,
+            Q = r_task.Q
+        )
 
-        _, least_bound_c_max = SchrageN2Resolver().pmtn_resolve([*queue])
-        #least_bound_c_max = max(least_bound_c_max, CarlierResolver.h_func(K, queue, order), CarlierResolver.h_func([c_order_index] + K, queue, order))
+        _, least_bound_c_max = self.schrage().pmtn_resolve([*queue])
+        least_bound_c_max = max(least_bound_c_max, CarlierResolver.h_func(K, queue, order), CarlierResolver.h_func([c_order_index] + K, queue, order))
 
         if least_bound_c_max < upper_bound.val:
-            self._impl(queue, upper_bound, pi_star)
-            #self.tasks_from_recursion.append((deepcopy(queue), self.upper_bound_c_max))
-        r_task.R = r_task_r_old
+            self.add_vertex(queue, upper_bound, pi_star, u_cmax)
 
+        queue[order[c_order_index]] = r_task
 
-    def _recursion_on_q(self, queue, order, c_order_index, K, upper_bound, pi_star):
+    def _recursion_on_q(self, queue, order, c_order_index, K, upper_bound, pi_star, u_cmax):
         r_task = queue[order[c_order_index]]
-        r_task_q_old = r_task.Q
-        r_task.Q = max(r_task.Q, CarlierResolver.q_func(K, queue, order) + CarlierResolver.p_func(K, queue, order))
+        queue[order[c_order_index]] = RPQTask(
+            task_no = r_task.task_no,
+            R = r_task.R,
+            P = r_task.P,
+            Q = max(r_task.Q, CarlierResolver.q_func(K, queue, order) + CarlierResolver.p_func(K, queue, order))
+        )
 
-        _, least_bound_c_max = SchrageN2Resolver().pmtn_resolve([*queue])
-        #least_bound_c_max = max(least_bound_c_max, CarlierResolver.h_func(K, queue, order), CarlierResolver.h_func([c_order_index] + K, queue, order))
+        _, least_bound_c_max = self.schrage().pmtn_resolve([*queue])
+        least_bound_c_max = max(least_bound_c_max, CarlierResolver.h_func(K, queue, order), CarlierResolver.h_func([c_order_index] + K, queue, order))
 
         if least_bound_c_max < upper_bound.val:
-            self._impl(queue, upper_bound, pi_star)
-            #self.tasks_from_recursion.append((deepcopy(queue), upper_bound_c_max))
-        r_task.Q = r_task_q_old
+            self.add_vertex(queue, upper_bound, pi_star, u_cmax)
+
+        queue[order[c_order_index]] = r_task
 
     def resolve(self, queue: Iterable) -> Order:
         pi_star = Order(order=None)
         upper_bound = IntPtr(math.inf)
+        self.tasks_from_recursion = []
 
-        self.original_queue = tuple(queue)
+        self._impl(deepcopy(queue), upper_bound, pi_star)
 
-        try:
-            self._impl(deepcopy(queue), upper_bound, pi_star)
-
-            '''
-            from multiprocessing import Pool
-
-            while len(self.tasks_from_recursion) > 0:
-                tasks, upper_bound = self.tasks_from_recursion[0]
-                self.tasks_from_recursion.popleft()
-                self._impl(tasks)
-            '''
-
-
-        except CarlierDoneException:
-            pass
+        while len(self.tasks_from_recursion) > 0:
+            processing = min(self.tasks_from_recursion, key=lambda obj: obj[1])
+            self.tasks_from_recursion.remove(processing)
+            self._impl(processing[0], upper_bound, pi_star)
 
         return [
             pi_star,
