@@ -125,7 +125,7 @@ def time_resolve(resolver, tasks: GroupedTasks):
 def RPQtime_resolve(resolver, tasks: Iterable):
     from datetime import datetime
     start = datetime.now()
-    result = resolver(queue=tasks)
+    result = resolver.resolve(queue=tasks)
     end = datetime.now()
     delta = end - start
     return (result, delta.total_seconds() * 1000)

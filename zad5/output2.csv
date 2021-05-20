@@ -1,12 +1,12 @@
 ilosc_zadan;czas
-<function main.<locals>.<lambda> at 0x7fa7e50c5040>
-50;14.478
-100;15.098
-200;138.767
+CarlierResolver(<class 'libs.rpq_resolver.SchrageLogNResolver'>, CarlierStrategy.BFS)
+50;2052.586
+100;86.24900000000001
+200;257.916
 
 ilosc_zadan;czas
-<function main.<locals>.<lambda> at 0x7fa7e5053dc0>
-50;521.452
-100;87.01
-200;262.217
+CarlierResolver(<class 'libs.rpq_resolver.SchrageLogNResolver'>, CarlierStrategy.Normal)
+50;903.004
+100;14.478
+200;136.08700000000002
 

@@ -165,10 +165,14 @@ class CarlierStrategy(Enum):
     Normal = 0
     BFS = 1
 
+class CarlierDoneException(Exception):
+    pass
+
 class CarlierResolver(RPQResolver):
     def __init__(self, strategy: CarlierStrategy, schrage):
         self.strategy = strategy
         self.schrage = schrage
+
 
     def add_vertex(self, queue, upper_bound: IntPtr, pi_star: Order, u_cmax: int):
         if self.strategy == CarlierStrategy.Normal:
@@ -202,6 +206,22 @@ class CarlierResolver(RPQResolver):
 
         assert b_order_index is not None
         return b_order_index
+
+    @staticmethod
+    def _find_a_b(order, queue, c_max):
+        t = 0
+        a_order_index, b_order_index = None, None
+
+        for order_index, task_index in enumerate(order.order):
+            task = queue[task_index]
+            if task.R > t:
+                a_order_index = order_index
+                t = task.R
+            t += task.P
+            if t + task.Q == c_max:
+                b_order_index = order_index
+
+        return a_order_index, b_order_index
 
     @staticmethod
     def _find_c(order, queue, a_order_index, b_order_index):
@@ -243,13 +263,22 @@ class CarlierResolver(RPQResolver):
         if u_cmax < upper_bound.val:
             upper_bound.val = u_cmax
             pi_star.order = deepcopy(u_order.order)
+            self.current_cmax_iter = 0
+        else:
+            self.current_cmax_iter += 1
+
+        if self.current_cmax_iter > self.max_iter:
+            raise CarlierDoneException()
 
         b_order_index = CarlierResolver._find_b(u_order, queue, u_cmax)
         a_order_index = CarlierResolver._find_a(u_order, queue, u_cmax, b_order_index)
-        c_order_index = CarlierResolver._find_c(u_order, queue, a_order_index, b_order_index)
+        #a_order_index, b_order_index = CarlierResolver._find_a_b(u_order, queue, u_cmax)
+        if a_order_index is None or b_order_index is None:
+            raise CarlierDoneException()
 
+        c_order_index = CarlierResolver._find_c(u_order, queue, a_order_index, b_order_index)
         if c_order_index is None:
-            return
+            raise CarlierDoneException()
 
         K = [*range(c_order_index+1, b_order_index+1)]
 
@@ -295,15 +324,24 @@ class CarlierResolver(RPQResolver):
     def resolve(self, queue: Iterable) -> Order:
         pi_star = Order(order=None)
         upper_bound = IntPtr(math.inf)
+        self.max_iter = 1000
+        self.current_cmax_iter = 0
         self.tasks_from_recursion = []
 
-        self._impl(deepcopy(queue), upper_bound, pi_star)
+        try:
+            self._impl(deepcopy(queue), upper_bound, pi_star)
 
-        while len(self.tasks_from_recursion) > 0:
-            processing = min(self.tasks_from_recursion, key=lambda obj: obj[1])
-            self.tasks_from_recursion.remove(processing)
-            self._impl(processing[0], upper_bound, pi_star)
+            while len(self.tasks_from_recursion) > 0:
+                processing = min(self.tasks_from_recursion, key=lambda obj: obj[1])
+                self.tasks_from_recursion.remove(processing)
+                self._impl(processing[0], upper_bound, pi_star)
+
+        except CarlierDoneException:
+            pass
 
         return [
             pi_star,
             upper_bound]
+
+    def __repr__(self):
+        return f"CarlierResolver({self.schrage}, {self.strategy})"
