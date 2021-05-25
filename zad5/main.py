@@ -14,28 +14,15 @@ from libs.helpers import RPQtime_resolve, create_random_rpq_task_queue, get_c_ma
 
 def main():
 
-    tasks = [
-        rpq_load_file('in50.txt'),
-        rpq_load_file('in100.txt'),
-        rpq_load_file('in200.txt'),
-        #rpq_load_file('data.000'),
-        #rpq_load_file('data.txt'),
-        rpq_load_file('data.003'),
-        rpq_load_file('data.004'),
-        rpq_load_file('data.006'),
-        rpq_load_file('data.007'),
-        rpq_load_file('data.008'),
-        #rpq_load_file('przyklad.txt')
-    ] #+ [rpq_load_file(f'data.00{i}') for i in range(5, 9) if i != 6]
+    tasks = []
+    for i in range(10, 1000):
+        tasks.append(create_random_rpq_task_queue(i, 2, 2000))
 
     resolvers_factory = [
-        #lambda: SchrageLogNResolver().resolve,
-        #lambda: SchrageLogNResolver().pmtn_resolve
-        #lambda: CarlierResolver(CarlierStrategy.Normal, SchrageLogNResolver).resolve,
+        CarlierResolver(CarlierStrategy.BFS, SchrageN2Resolver),
         CarlierResolver(CarlierStrategy.BFS, SchrageLogNResolver),
+        CarlierResolver(CarlierStrategy.Normal, SchrageN2Resolver),
         CarlierResolver(CarlierStrategy.Normal, SchrageLogNResolver)
-        #lambda: SchrageN2Resolver().resolve,
-        #lambda: SchrageN2Resolver().pmtn_resolve
         ]
 
     global_result = defaultdict(lambda: dict())
