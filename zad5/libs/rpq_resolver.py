@@ -174,11 +174,11 @@ class CarlierResolver(RPQResolver):
         self.schrage = schrage
 
 
-    def add_vertex(self, queue, upper_bound: IntPtr, pi_star: Order, u_cmax: int):
+    def add_vertex(self, queue, upper_bound: IntPtr, pi_star: Order, least_bound: int):
         if self.strategy == CarlierStrategy.Normal:
             self._impl(queue, upper_bound, pi_star)
         else:
-            self.tasks_from_recursion.append(((deepcopy(queue), u_cmax)))
+            self.tasks_from_recursion.append(((deepcopy(queue), least_bound)))
 
     @staticmethod
     def _find_a(order, queue, c_max, b_order_index):
@@ -282,12 +282,12 @@ class CarlierResolver(RPQResolver):
 
         K = [*range(c_order_index+1, b_order_index+1)]
 
-        self._recursion_on_r(queue, u_order, c_order_index, K, upper_bound, pi_star, u_cmax)
-        self._recursion_on_q(queue, u_order, c_order_index, K, upper_bound, pi_star, u_cmax)
+        self._recursion_on_r(queue, u_order, c_order_index, K, upper_bound, pi_star)
+        self._recursion_on_q(queue, u_order, c_order_index, K, upper_bound, pi_star)
 
 
 
-    def _recursion_on_r(self, queue, order, c_order_index, K, upper_bound: IntPtr, pi_star: Order, u_cmax):
+    def _recursion_on_r(self, queue, order, c_order_index, K, upper_bound: IntPtr, pi_star: Order):
         r_task = queue[order[c_order_index]]
         queue[order[c_order_index]] = RPQTask(
             task_no = r_task.task_no,
@@ -300,11 +300,11 @@ class CarlierResolver(RPQResolver):
         least_bound_c_max = max(least_bound_c_max, CarlierResolver.h_func(K, queue, order), CarlierResolver.h_func([c_order_index] + K, queue, order))
 
         if least_bound_c_max < upper_bound.val:
-            self.add_vertex(queue, upper_bound, pi_star, u_cmax)
+            self.add_vertex(queue, upper_bound, pi_star, least_bound_c_max)
 
         queue[order[c_order_index]] = r_task
 
-    def _recursion_on_q(self, queue, order, c_order_index, K, upper_bound, pi_star, u_cmax):
+    def _recursion_on_q(self, queue, order, c_order_index, K, upper_bound, pi_star):
         r_task = queue[order[c_order_index]]
         queue[order[c_order_index]] = RPQTask(
             task_no = r_task.task_no,
@@ -317,7 +317,7 @@ class CarlierResolver(RPQResolver):
         least_bound_c_max = max(least_bound_c_max, CarlierResolver.h_func(K, queue, order), CarlierResolver.h_func([c_order_index] + K, queue, order))
 
         if least_bound_c_max < upper_bound.val:
-            self.add_vertex(queue, upper_bound, pi_star, u_cmax)
+            self.add_vertex(queue, upper_bound, pi_star, least_bound_c_max)
 
         queue[order[c_order_index]] = r_task
 
