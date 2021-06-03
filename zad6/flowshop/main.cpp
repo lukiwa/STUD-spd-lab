@@ -1,6 +1,7 @@
 #include <iostream>
 #include <algorithm>
 #include <numeric>
+#include <chrono>
 
 #include <gecode/int.hh>
 #include <gecode/gist.hh>
@@ -22,8 +23,10 @@ public:
         starts_ = Gecode::IntVarArray(*this, tasks_.tasks_no * tasks_.machine_no, 0, est_cmax);
         order_ = Gecode::IntVarArray(*this, tasks_.tasks_no, 0, tasks_.tasks_no - 1);
 
+        // distinct order
         Gecode::distinct(*this, order_);
 
+        // no overlap on machines
         Gecode::Matrix<Gecode::IntVarArray> starts_matrix(starts_, tasks_.machine_no, tasks_.tasks_no);
         auto task_matrix = tasks_.matrix();
         for (int machine = 0; machine < tasks_.machine_no; ++machine)
@@ -31,7 +34,7 @@ public:
             Gecode::unary(*this, starts_matrix.col(machine), task_matrix.col(machine));
         }
 
-
+        // task precedence and cmax
         for (int task = 0; task < tasks_.tasks_no; ++task)
         {
             auto start_times_of_a_task = static_cast<Gecode::IntVarArgs>(starts_matrix.row(task));
@@ -44,7 +47,34 @@ public:
             Gecode::rel(*this, cmax_ >= start_times_of_a_task[start_times_of_a_task.size() - 1] + task_matrix(tasks_.machine_no - 1, task));
         }
 
-        branchOnOrderAndStarts(*this, tasks_, order_, starts_);
+        //
+        for (int i = 0; i < tasks_.tasks_no; ++i)
+        {
+
+
+            for (int j = 0; j < tasks_.tasks_no; ++j)
+            {
+                if (i != j)
+                {
+                    /*
+                    Gecode::rel(*this,
+                    (order_[i] + 1 == order_[j]) >>
+                    ());
+                    */
+                    //i_is_before_j << Gecode::expr(*this, )
+                    Gecode::BoolVarArgs i_is_before_j;
+                    for (int machine = 0; machine < tasks_.machine_no; ++machine)
+                    {
+                        i_is_before_j << Gecode::expr(*this, starts_matrix(machine, i) + task_matrix(machine, i) <= starts_matrix(machine, j));
+                    }
+
+                    Gecode::rel(*this, Gecode::BOT_EQV, i_is_before_j, 1);
+                    Gecode::rel(*this, (order_[i] < order_[j]) == i_is_before_j[0]);
+                }
+            }
+        }
+
+        branchOnOrderAndStarts(*this, tasks_, cmax_, order_, starts_);
         Gecode::branch(*this, starts_, Gecode::INT_VAR_MIN_MIN(), Gecode::INT_VAL_MIN());
         Gecode::branch(*this, cmax_, Gecode::INT_VAL_MIN());
     }
@@ -70,14 +100,6 @@ public:
 
     void print(std::ostream& os) const
     {
-        Gecode::Matrix<Gecode::IntVarArray> starts_matrix(starts_, tasks_.machine_no, tasks_.tasks_no);
-        /*
-        os << "starts:\n";
-        for (int task = 0; task < tasks_.tasks_no; ++task)
-        {
-            os << starts_matrix.row(task) << '\n';
-        }
-        */
         os << "cmax: " << cmax_
             << "\norder: " << order_ << std::endl;
     }
@@ -122,8 +144,7 @@ private:
         //std::vector<int> order(tasks_.tasks_no, 0);
         //std::iota(order.begin(), order.end(), 0);
 
-        //return get_cmax(tasks_, johnson(tasks_));
-        return 5918;
+        return get_cmax(tasks_, johnson(tasks_));
     }
 
     const Tasks& tasks_;
@@ -134,6 +155,8 @@ private:
 
 int main()
 {
+    std::srand(std::time(nullptr));
+
     const auto tasks = load_file("data.080");
     FlowshopSpace space(*tasks);
 
@@ -147,12 +170,14 @@ int main()
 
 
 
-    /*
+
+   /*
     Gecode::Search::Options o;
-    Gecode::Search::TimeStop timeStop(200 * 1000);
-    o.stop = &timeStop;
+    //Gecode::Search::TimeStop timeStop(200 * 1000);
+    //o.stop = &timeStop;
 
     Gecode::BAB<FlowshopSpace> engine(&space, o);
+    auto now = std::chrono::high_resolution_clock::now();
 
     while (auto* solution = engine.next())
     {
@@ -162,6 +187,10 @@ int main()
         solution->print(std::cout);
         std::cout << "--------------------\n";
         std::cout << "cmax from deduced order: " << get_cmax(*tasks, order) << '\n';
+
+        auto now2 = std::chrono::high_resolution_clock::now();
+        std::cout << "time passed: " << (std::chrono::duration_cast<std::chrono::milliseconds>(now2 - now).count() / 1000.0) << " sec\n";
+
         std::cout << "--------------------" << std::endl;
 
         delete solution;

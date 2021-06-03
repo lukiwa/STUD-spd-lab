@@ -14,9 +14,11 @@ public:
     BranchOnOrderAndStarts(
         Gecode::Home home,
         const Tasks& tasks,
+        Gecode::Int::IntView cmax,
         Gecode::ViewArray<Gecode::Int::IntView> order,
         Gecode::ViewArray<Gecode::Int::IntView> starts)
             : Gecode::Brancher(home)
+            , cmax_(cmax)
             , order_(order)
             , starts_(starts)
             , tasks_(tasks)
@@ -31,6 +33,7 @@ public:
             : Gecode::Brancher(home, other)
             , tasks_(other.tasks_)
     {
+        cmax_.update(home, other.cmax_);
         order_.update(home, other.order_);
         starts_.update(home, other.starts_);
     }
@@ -43,10 +46,11 @@ public:
     static void post(
         Gecode::Home home,
         const Tasks& tasks,
+        Gecode::Int::IntView cmax,
         Gecode::ViewArray<Gecode::Int::IntView> order,
         Gecode::ViewArray<Gecode::Int::IntView> starts)
     {
-        (void) new (home) BranchOnOrderAndStarts(home, tasks, order, starts);
+        (void) new (home) BranchOnOrderAndStarts(home, tasks, cmax, order, starts);
     }
 
     bool status(const Gecode::Space& home) const override
@@ -64,12 +68,14 @@ public:
     public:
         int task_index;
         int order_value;
+        int perceived_cmax_min;
         std::vector<int> start_times;
 
-        OrderAndStartTimesChoice(const BranchOnOrderAndStarts& b, int task_index, int order_value, std::vector<int>&& start_times)
+        OrderAndStartTimesChoice(const BranchOnOrderAndStarts& b, int task_index, int order_value, int perceived_cmax_min, std::vector<int>&& start_times)
             : Gecode::Choice(b, 2)
             , task_index(task_index)
             , order_value(order_value)
+            , perceived_cmax_min(perceived_cmax_min)
             , start_times(start_times)
         {
             assert(start_times.size() == b.getTasks().machine_no);
@@ -78,7 +84,7 @@ public:
         void archive(Gecode::Archive& e) const override
         {
             Gecode::Choice::archive(e);
-            e << task_index << order_value;
+            e << task_index << order_value << perceived_cmax_min;
             for (int i : start_times)
             {
                 e << i;
@@ -94,16 +100,13 @@ public:
         auto minComp = [](const auto& lhs, const auto& rhs){ return lhs.min() < rhs.min(); };
         auto valComp = [](const auto& lhs, const auto& rhs){ return lhs.val() < rhs.val(); };
 
-        auto var_min_min = boost::range::min_element(order_ | filtered(notAssigned), minComp);
-        auto var_min_mins = order_ | filtered(notAssigned) | filtered([&var_min_min](const auto& view){ return view.min() == var_min_min->min(); });
-        auto var_min_mins_size = boost::size(var_min_mins);
-        assert(var_min_min.base() != order_.end());
+        auto hasInDomain = [](const int i){
+            return [i](const auto& view){
+                return view.in(i);
+            };
+        };
 
-        // 1.
-        int task_index = std::next(var_min_mins.begin(), std::rand() % var_min_mins_size).base().base() - order_.begin();
-        assert(task_index >= 0);
-
-        // 2.
+        // 1. order value
         auto var_val_max = boost::range::max_element(order_ | filtered(isAssigned), valComp);
         int order_value;
         if (var_val_max.base() != order_.end())
@@ -115,7 +118,23 @@ public:
             order_value = 0;
         }
 
-        // 3.
+        // 2. task to be assigned
+        auto var_min_min = boost::range::min_element(order_ | filtered(notAssigned) | filtered(hasInDomain(order_value)), minComp);
+        if (var_min_min.base().base() == order_.end())
+        {
+            return new OrderAndStartTimesChoice(*this, 0, -1, 0, std::vector<int>(tasks_.machine_no, 0));
+        }
+        auto var_min_mins = order_
+            | filtered(notAssigned)
+            | filtered(hasInDomain(order_value))
+            | filtered([&var_min_min](const auto& view){ return view.min() == var_min_min->min(); });
+        auto var_min_mins_size = boost::size(var_min_mins);
+
+        int task_index = std::next(var_min_mins.begin(), std::rand() % var_min_mins_size).base().base().base() - order_.begin();
+        assert(task_index >= 0);
+
+
+        // 3. start times
         auto tasks_matrix = tasks_.matrix();
         std::vector<int> start_times(tasks_.machine_no, 0);
         if (order_value == 0)
@@ -125,8 +144,6 @@ public:
             {
                 start_times[machine] = start_times[machine - 1] + tasks_matrix(machine - 1, task_index);
             }
-
-            return new OrderAndStartTimesChoice(*this, task_index, order_value, std::move(start_times));
         }
         else
         {
@@ -142,15 +159,27 @@ public:
                     start_times[machine - 1] + tasks_matrix(machine - 1, task_index),
                     starts_[machine + tasks_.machine_no * before_task_index].val() + tasks_matrix(machine, before_task_index));
             }
-
-            return new OrderAndStartTimesChoice(*this, task_index, order_value, std::move(start_times));
         }
+
+        // 4. cmax
+        int sum_of_not_assigned_durations = 0;
+        for (int task = 0; task < tasks_.tasks_no; ++task)
+        {
+            if (!order_[task].assigned())
+            {
+                sum_of_not_assigned_durations += tasks_matrix(tasks_.machine_no - 1, task);
+            }
+        }
+
+        int perceived_min_cmax = sum_of_not_assigned_durations + start_times[tasks_.machine_no - 1];
+
+        return new OrderAndStartTimesChoice(*this, task_index, order_value, perceived_min_cmax, std::move(start_times));
     }
 
     Gecode::Choice* choice(const Gecode::Space&, Gecode::Archive& e) override
     {
-        int task_index, order_value;
-        e >> task_index >> order_value;
+        int task_index, order_value, perceived_min_cmax;
+        e >> task_index >> order_value >> perceived_min_cmax;
 
         std::vector<int> start_times(tasks_.machine_no, 0);
         for (int i = 0; i < tasks_.machine_no; ++i)
@@ -158,7 +187,7 @@ public:
             e >> start_times[i];
         }
 
-        return new OrderAndStartTimesChoice(*this, task_index, order_value, std::move(start_times));
+        return new OrderAndStartTimesChoice(*this, task_index, order_value, perceived_min_cmax, std::move(start_times));
     }
 
     Gecode::ExecStatus commit(Gecode::Space& home, const Gecode::Choice& c, unsigned a) override
@@ -168,12 +197,16 @@ public:
         if (a == 0)
         {
             GECODE_ME_CHECK(order_[choice.task_index].eq(home, choice.order_value));
+            GECODE_ME_CHECK(cmax_.gq(home, choice.perceived_cmax_min));
 
-            //Gecode::Matrix<Gecode::ViewArray<Gecode::Int::IntView>> starts_matrix(starts_, tasks_.machine_no, tasks_.tasks_no);
             for (int machine = 0; machine < tasks_.machine_no; ++machine)
             {
                 GECODE_ME_CHECK(starts_[machine + tasks_.machine_no * choice.task_index].eq(home, choice.start_times[machine]));
             }
+        }
+        else if (choice.order_value == -1)
+        {
+            return Gecode::ES_FAILED;
         }
         else
         {
@@ -198,6 +231,7 @@ public:
     }
 
 private:
+    Gecode::Int::IntView cmax_;
     Gecode::ViewArray<Gecode::Int::IntView> order_;
     Gecode::ViewArray<Gecode::Int::IntView> starts_;
     const Tasks& tasks_;
@@ -206,14 +240,16 @@ private:
 void branchOnOrderAndStarts(
     Gecode::Home home,
     const Tasks& tasks,
+    Gecode::IntVar cmax,
     Gecode::IntVarArgs order,
     Gecode::IntVarArgs starts)
 {
     if (home.failed())
         return;
 
+    Gecode::Int::IntView cmax_view(cmax);
     Gecode::ViewArray<Gecode::Int::IntView> order_view(home, order);
     Gecode::ViewArray<Gecode::Int::IntView> starts_view(home, starts);
 
-    BranchOnOrderAndStarts::post(home, tasks, order_view, starts_view);
+    BranchOnOrderAndStarts::post(home, tasks, cmax_view, order_view, starts_view);
 }
