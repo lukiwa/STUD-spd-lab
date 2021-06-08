@@ -27,7 +27,7 @@ public:
         {
             for (int job = 1; job < tasks_.tasks[task].jobs.size(); ++job)
             {
-                Gecode::rel(*this, starts_matrix(task, job) >= starts_matrix(task, job - 1) + tasks_.tasks[task].jobs[job].duration);
+                Gecode::rel(*this, starts_matrix(task, job) >= starts_matrix(task, job - 1) + tasks_.tasks[task].jobs[job - 1].duration);
             }
         }
 
@@ -35,11 +35,10 @@ public:
         std::map<unsigned, std::vector<std::pair<Gecode::IntVar, Tasks::Task::Job>>> machine_to_starts_map;
         for (int task = 0; task < tasks_.tasks.size(); ++task)
         {
-            for (int job = 1; job < tasks_.tasks[task].jobs.size(); ++job)
+            for (int job = 0; job < tasks_.tasks[task].jobs.size(); ++job)
             {
                 const auto& job_el = tasks_.tasks[task].jobs[job];
-                auto& el = machine_to_starts_map[job_el.machine];
-                el.push_back({starts_matrix(task, job), job_el});
+                machine_to_starts_map[job_el.machine].push_back({starts_matrix(task, job), job_el});
             }
         }
 
@@ -60,13 +59,11 @@ public:
         // cmax setting
         for (int task = 0; task < tasks_.tasks.size(); ++task)
         {
-            for (int job = 0; job < tasks_.tasks[task].jobs.size(); ++job)
-            {
-                Gecode::rel(*this, cmax_ >= starts_matrix(task, job) + tasks_.tasks[task].jobs[job].duration);
-            }
+            Gecode::rel(*this, cmax_ >= starts_matrix(task, tasks_.machine_no - 1) + tasks_.tasks[task].jobs.back().duration);
         }
 
-        Gecode::branch(*this, starts_, Gecode::INT_VAR_SIZE_MIN(), Gecode::INT_VAL_MIN());
+        Gecode::Rnd r1(42);
+        Gecode::branch(*this, starts_, Gecode::INT_VAR_CHB_MAX(), Gecode::INT_VAL_SPLIT_MIN());
         Gecode::branch(*this, cmax_, Gecode::INT_VAL_MIN());
     }
 
@@ -84,7 +81,8 @@ public:
             }
         }
 
-        return *std::max_element(time_on_machines.begin(), time_on_machines.end());
+        //return *std::max_element(time_on_machines.begin(), time_on_machines.end());
+        return 2000;
     }
 
     Gecode::IntVar cost() const override
@@ -122,21 +120,24 @@ int main()
     const auto tasks = load_file("data.001");
     JobshopSpace space(*tasks);
 
-
+    /*
     Gecode::Gist::Print<JobshopSpace> p("Print solution");
     Gecode::Gist::Options o;
     o.inspect.click(&p);
     Gecode::Gist::bab(&space, o);
+    */
 
 
-    /*
+
     Gecode::BAB<JobshopSpace> engine(&space);
+    std::cout << "cmax: inf" << std::flush;
     while (auto* solution = engine.next())
     {
-        std::cout << "-- SOLUTION FOUND --" << std::endl;
-        solution->print(std::cout);
-        std::cout << "--------------------" << std::endl;
+        //std::cout << "-- SOLUTION FOUND --" << std::endl;
+        //solution->print(std::cout);
+        //std::cout << "--------------------" << std::endl;
+        std::cout << "\rcmax: " << solution->cost() << std::flush;
         delete solution;
     }
-    */
+
 }
