@@ -47,21 +47,13 @@ public:
             Gecode::rel(*this, cmax_ >= start_times_of_a_task[start_times_of_a_task.size() - 1] + task_matrix(tasks_.machine_no - 1, task));
         }
 
-        //
+        // task i before task j
         for (int i = 0; i < tasks_.tasks_no; ++i)
         {
-
-
             for (int j = 0; j < tasks_.tasks_no; ++j)
             {
                 if (i != j)
                 {
-                    /*
-                    Gecode::rel(*this,
-                    (order_[i] + 1 == order_[j]) >>
-                    ());
-                    */
-                    //i_is_before_j << Gecode::expr(*this, )
                     Gecode::BoolVarArgs i_is_before_j;
                     for (int machine = 0; machine < tasks_.machine_no; ++machine)
                     {
@@ -160,8 +152,6 @@ int main()
     const auto tasks = load_file("data.080");
     FlowshopSpace space(*tasks);
 
-    std::cout << "johnson: " << get_cmax(*tasks, johnson(*tasks)) << std::endl;
-
 
     Gecode::Gist::Print<FlowshopSpace> p("Print solution");
     Gecode::Gist::Options o;
@@ -171,7 +161,7 @@ int main()
 
 
 
-   /*
+    /*
     Gecode::Search::Options o;
     //Gecode::Search::TimeStop timeStop(200 * 1000);
     //o.stop = &timeStop;

@@ -1,5 +1,5 @@
 CC=g++
-CC_ARGS=-std=c++2a -fconcepts -g
+CC_ARGS=-std=c++2a -fconcepts -O3
 LIBS=-lgecodekernel -lgecodesupport -lgecodesearch -lgecodeint -lgecodegist -lgecodeminimodel
 
 
