@@ -194,6 +194,11 @@ public:
     {
         const auto& choice = static_cast<const OrderAndStartTimesChoice&>(c);
 
+        if (choice.order_value == -1)
+        {
+            return Gecode::ES_FAILED;
+        }
+
         if (a == 0)
         {
             GECODE_ME_CHECK(order_[choice.task_index].eq(home, choice.order_value));
@@ -203,10 +208,6 @@ public:
             {
                 GECODE_ME_CHECK(starts_[machine + tasks_.machine_no * choice.task_index].eq(home, choice.start_times[machine]));
             }
-        }
-        else if (choice.order_value == -1)
-        {
-            return Gecode::ES_FAILED;
         }
         else
         {
@@ -219,15 +220,10 @@ public:
     void print(const Gecode::Space& home, const Gecode::Choice& c, unsigned a, std::ostream& os) const override
     {
         const auto& choice = static_cast<const OrderAndStartTimesChoice&>(c);
+        Gecode::IntArgs starts(choice.start_times.begin(), choice.start_times.end());
+        std::string deli = a == 0 ? "=" : "!=";
 
-        if (a == 0)
-        {
-            os << "order[" << choice.task_index << "] = " << choice.order_value;
-        }
-        else
-        {
-            os << "order[" << choice.task_index << "] != " << choice.order_value;
-        }
+        os << "order[" << choice.task_index << "] " << deli << " " << choice.order_value << ", starts: " << starts;
     }
 
 private:

@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <numeric>
 #include <iomanip>
+#include <chrono>
 
 #include <boost/range/algorithm.hpp>
 
@@ -10,7 +11,6 @@
 
 #include "tasks.hpp"
 #include "load_file.hpp"
-//#include "brancher.hpp"
 #include "schrage.hpp"
 
 
@@ -25,16 +25,22 @@ public:
         S = Gecode::IntVarArray(*this, info.size(), 0, est_cmax);
         C = Gecode::IntVarArray(*this, info.size(), 0, est_cmax);
 
+        ////////////////////////////////////////////////
+
+        Gecode::IntVarArgs c_plus_q;
         for (int i = 0; i < info.size(); i++)
         {
             Gecode::rel(*this, S[i] >= info.r[i]);
             Gecode::rel(*this, C[i] == S[i] + info.p[i]);
-            Gecode::rel(*this, c_max >= S[i] + info.p[i] + info.q[i]);
+
+            c_plus_q << Gecode::expr(*this, C[i] + info.q[i]);
         }
+        Gecode::rel(*this, c_max == Gecode::max(c_plus_q));
 
         Gecode::unary(*this, S, info.p);
 
-        Gecode::branch(*this, c_max, Gecode::INT_VAL_SPLIT_MIN());
+        /////////////////////////////////////////
+
         Gecode::branch(*this, S, Gecode::INT_VAR_MIN_MIN(), Gecode::INT_VAL_MIN());
     }
 
@@ -101,11 +107,40 @@ private:
 
 int main(int argc, char* argv[])
 {
-    const auto tasks = load_file("in200.txt");
+    if (argc != 2)
+    {
+        std::cout << "usage: ???" << std::endl;
+        return -1;
+    }
+
+    constexpr bool USE_GIST = false;
+
+    const auto tasks = load_file(argv[1]);
     RPQSpace space(tasks);
 
-    Gecode::Gist::Print<RPQSpace> p("Print solution");
-    Gecode::Gist::Options o;
-    o.inspect.click(&p);
-    Gecode::Gist::bab(&space, o);
+    if (USE_GIST)
+    {
+        Gecode::Gist::Print<RPQSpace> p("Print solution");
+        Gecode::Gist::Options o;
+        o.inspect.click(&p);
+        Gecode::Gist::bab(&space, o);
+    }
+    else
+    {
+        const auto now = std::chrono::high_resolution_clock::now();
+
+        Gecode::Search::Options o;
+        Gecode::Search::TimeStop stop(15 * 1000);
+        o.stop = &stop;
+        Gecode::BAB<RPQSpace> engine(&space, o);
+
+        while (auto* solution = engine.next())
+        {
+            std::cout << "cmax: " << solution->cost() << ", other cmax: " << get_cmax(tasks, solution->getOrder()) << std::endl;
+            delete solution;
+        }
+
+        const auto stop_time = std::chrono::high_resolution_clock::now();
+        std::cout << "time: " << std::chrono::duration_cast<std::chrono::microseconds>(stop_time - now).count() / 1000.0 << std::endl;
+    }
 }

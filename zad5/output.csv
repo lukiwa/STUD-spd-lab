@@ -1,28 +1,11 @@
-zadania;c_max;czas
-<bound method SchrageN2Resolver.resolve of <libs.rpq_resolver.SchrageN2Resolver object at 0x7f7c219322e8>>
-test.txt;3109;0:00:00.000813
-in50.txt;1513;0:00:00.001191
-in100.txt;3076;0:00:00.003367
-in200.txt;6416;0:00:00.012559
-
-zadania;c_max;czas
-<bound method SchrageN2Resolver.pmtn_resolve of <libs.rpq_resolver.SchrageN2Resolver object at 0x7f7c2190a518>>
-test.txt;3026;0:00:00.001611
-in50.txt;1492;0:00:00.001490
-in100.txt;3070;0:00:00.003782
-in200.txt;6398;0:00:00.021663
-
-zadania;c_max;czas
-<bound method SchrageLogNResolver.resolve of <libs.rpq_resolver.SchrageLogNResolver object at 0x7f7c218dc6d8>>
-test.txt;3109;0:00:00.000766
-in50.txt;1513;0:00:00.001211
-in100.txt;3076;0:00:00.001187
-in200.txt;6416;0:00:00.003906
-
-zadania;c_max;czas
-<bound method SchrageLogNResolver.pmtn_resolve of <libs.rpq_resolver.SchrageLogNResolver object at 0x7f7bdf972e48>>
-test.txt;3026;0:00:00.000939
-in50.txt;1492;0:00:00.000763
-in100.txt;3070;0:00:00.001379
-in200.txt;6398;0:00:00.004359
-
+nazwa,czas,cmax
+CarlierResolver(<class 'libs.rpq_resolver.SchrageLogNResolver'>, CarlierStrategy.BFS)
+data.000,0.21000000000000002,IntPtr(val=228)
+data.001,610.54,IntPtr(val=3026)
+data.002,1632.6419999999998,IntPtr(val=3665)
+data.003,6.844,IntPtr(val=3309)
+data.004,17.724,IntPtr(val=3191)
+data.005,97.372,IntPtr(val=3618)
+data.006,1574.7469999999998,IntPtr(val=3446)
+data.007,2312.182,IntPtr(val=3821)
+data.008,1640.23,IntPtr(val=3634)

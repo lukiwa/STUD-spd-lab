@@ -38,8 +38,7 @@ public:
             return sum + el;
         });
         starts_ = Gecode::IntVarArray(*this, tasks_.p.size(), 0, time_sum);
-
-        t_ = Gecode::IntVarArray(*this, tasks_.p.size(), 0, time_sum);
+        t_ = Gecode::IntVarArray(*this, tasks_.p.size(), 0, Gecode::Int::Limits::max);
 
         //////////////////////////////////////////
 
@@ -89,8 +88,6 @@ public:
         std::iota(order.begin(), order.end(), 0);
         return get_cost(order, tasks_);
     }
-
-
 
 private:
     const Tasks& tasks_;

@@ -3,11 +3,14 @@
 #include <numeric>
 #include <map>
 
+#include <boost/range/adaptors.hpp>
+
 #include <gecode/int.hh>
 #include <gecode/gist.hh>
 #include <gecode/minimodel.hh>
 
 #include "tasks.hpp"
+
 
 class JobshopSpace : public Gecode::IntMinimizeSpace
 {
@@ -17,17 +20,16 @@ public:
     {
         auto est_cmax = get_est_cmax();
         starts_ = Gecode::IntVarArray(*this, tasks_.jobs_no, 0, est_cmax);
-        cmax_ = Gecode::IntVar(*this, 0, est_cmax);
+        cmax_ = Gecode::IntVar(*this, 0, Gecode::Int::Limits::max);
 
-        // starts_matrix(i, j) -> ith task and jth job in sequence
-        Gecode::Matrix<Gecode::IntVarArray> starts_matrix(starts_, tasks_.machine_no, tasks_.task_no);
+        auto starts_matrix = matrix();
 
         // precedence
         for (int task = 0; task < tasks_.tasks.size(); ++task)
         {
             for (int job = 1; job < tasks_.tasks[task].jobs.size(); ++job)
             {
-                Gecode::rel(*this, starts_matrix(task, job) >= starts_matrix(task, job - 1) + tasks_.tasks[task].jobs[job - 1].duration);
+                Gecode::rel(*this, starts_matrix(job, task) >= starts_matrix(job - 1, task) + tasks_.tasks[task].jobs[job - 1].duration);
             }
         }
 
@@ -38,7 +40,7 @@ public:
             for (int job = 0; job < tasks_.tasks[task].jobs.size(); ++job)
             {
                 const auto& job_el = tasks_.tasks[task].jobs[job];
-                machine_to_starts_map[job_el.machine].push_back({starts_matrix(task, job), job_el});
+                machine_to_starts_map[job_el.machine].push_back({starts_matrix(job, task), job_el});
             }
         }
 
@@ -57,32 +59,33 @@ public:
         }
 
         // cmax setting
+        Gecode::IntVarArgs lastJobsEnd;
         for (int task = 0; task < tasks_.tasks.size(); ++task)
         {
-            Gecode::rel(*this, cmax_ >= starts_matrix(task, tasks_.machine_no - 1) + tasks_.tasks[task].jobs.back().duration);
+            lastJobsEnd << Gecode::expr(*this, starts_matrix(tasks_.machine_no - 1, task) + tasks_.tasks[task].jobs.back().duration);
         }
+        Gecode::rel(*this, cmax_ == Gecode::max(lastJobsEnd));
 
-        Gecode::Rnd r1(42);
+        ///////////////////////////////////////////////////////////////////
+
         Gecode::branch(*this, starts_, Gecode::INT_VAR_CHB_MAX(), Gecode::INT_VAL_SPLIT_MIN());
-        Gecode::branch(*this, cmax_, Gecode::INT_VAL_MIN());
     }
 
     int get_est_cmax() const
     {
-        std::vector<int> time_on_machines(tasks_.task_no, 0);
+        using namespace boost::adaptors;
 
-        for (const auto& task : tasks_.tasks)
+        std::vector<OrderType> order;
+        for (const auto& task : tasks_.tasks | indexed())
         {
-            int current_task_time = 0;
-            for (const auto& job : task.jobs)
+            for (const auto& job : task.value().jobs | indexed())
             {
-                current_task_time = std::max(current_task_time, time_on_machines[job.machine]) + job.duration;
-                time_on_machines[job.machine] = current_task_time;
+                order.push_back(OrderType{(int) task.index(), (int) job.index()});
             }
         }
 
-        //return *std::max_element(time_on_machines.begin(), time_on_machines.end());
-        return 2000;
+        //return 7000;
+        return get_cmax(tasks_, order);
     }
 
     Gecode::IntVar cost() const override
@@ -109,35 +112,91 @@ public:
             << "\nstarts: " << starts_ << std::endl;
     }
 
+    // starts_matrix(i, j) -> ith task and jth job in sequence
+    Gecode::Matrix<Gecode::IntVarArray> matrix() const
+    {
+        return Gecode::Matrix<Gecode::IntVarArray>(starts_, tasks_.machine_no, tasks_.task_no);
+    }
+
+    std::vector<OrderType> deduceOrder() const
+    {
+        using namespace boost::adaptors;
+
+        struct TaggedStart
+        {
+            int start;
+            OrderType job_tag;
+        };
+
+        //////////////////////////////////////////////////////////////
+
+        assert(std::all_of(starts_.begin(), starts_.end(), [](const auto& el){ return el.assigned(); }));
+
+        std::vector<TaggedStart> taggedStarts;
+        taggedStarts.reserve(tasks_.jobs_no);
+        auto starts_matrix = matrix();
+        for (const auto& task : tasks_.tasks | indexed())
+        {
+            for (const auto& job : task.value().jobs | indexed())
+            {
+                taggedStarts.push_back(TaggedStart{
+                    starts_matrix(job.index(), task.index()).val(),
+                    OrderType{(int) task.index(), (int) job.index()}
+                });
+            }
+        }
+
+        std::sort(taggedStarts.begin(), taggedStarts.end(), [](const auto& lhs, const auto& rhs){
+            return lhs.start < rhs.start;
+        });
+
+        std::vector<OrderType> result;
+        result.reserve(taggedStarts.size());
+        std::transform(taggedStarts.begin(), taggedStarts.end(), std::back_inserter(result), [](const auto& el){
+            return el.job_tag;
+        });
+
+        return result;
+    }
+
 private:
     const Tasks& tasks_;
     Gecode::IntVarArray starts_;
     Gecode::IntVar cmax_;
 };
 
-int main()
+int main(int argc, char** argv)
 {
-    const auto tasks = load_file("data.001");
-    JobshopSpace space(*tasks);
+    constexpr bool USE_GIST = false;
 
-    /*
-    Gecode::Gist::Print<JobshopSpace> p("Print solution");
-    Gecode::Gist::Options o;
-    o.inspect.click(&p);
-    Gecode::Gist::bab(&space, o);
-    */
-
-
-
-    Gecode::BAB<JobshopSpace> engine(&space);
-    std::cout << "cmax: inf" << std::flush;
-    while (auto* solution = engine.next())
+    if (argc != 2)
     {
-        //std::cout << "-- SOLUTION FOUND --" << std::endl;
-        //solution->print(std::cout);
-        //std::cout << "--------------------" << std::endl;
-        std::cout << "\rcmax: " << solution->cost() << std::flush;
-        delete solution;
+        std::cout << "usage: ./a.out <input_file>" << std::endl;
+        return -1;
     }
 
+    const auto tasks = load_file(argv[1]);
+    JobshopSpace space(*tasks);
+
+    if (USE_GIST)
+    {
+        Gecode::Gist::Print<JobshopSpace> p("Print solution");
+        Gecode::Gist::Options o;
+        o.inspect.click(&p);
+        Gecode::Gist::bab(&space, o);
+    }
+    else
+    {
+        Gecode::BAB<JobshopSpace> engine(&space);
+        std::cout << "cmax: " << space.cost().max() << std::endl;
+        while (auto* solution = engine.next())
+        {
+            std::cout << "cmax : " << solution->cost() << std::endl;
+
+            auto order = solution->deduceOrder();
+            assert(get_cmax(*tasks, order) == solution->cost().val());
+
+            delete solution;
+        }
+    }
 }

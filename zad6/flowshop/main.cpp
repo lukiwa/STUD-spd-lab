@@ -35,6 +35,7 @@ public:
         }
 
         // task precedence and cmax
+        Gecode::IntVarArgs lastJobsEnd;
         for (int task = 0; task < tasks_.tasks_no; ++task)
         {
             auto start_times_of_a_task = static_cast<Gecode::IntVarArgs>(starts_matrix.row(task));
@@ -44,8 +45,9 @@ public:
                 Gecode::rel(*this, start_times_of_a_task[machine] >= start_times_of_a_task[machine - 1] + task_matrix(machine - 1, task));
             }
 
-            Gecode::rel(*this, cmax_ >= start_times_of_a_task[start_times_of_a_task.size() - 1] + task_matrix(tasks_.machine_no - 1, task));
+            lastJobsEnd << Gecode::expr(*this, start_times_of_a_task[start_times_of_a_task.size() - 1] + task_matrix(tasks_.machine_no - 1, task));
         }
+        Gecode::rel(*this, cmax_ == Gecode::max(lastJobsEnd));
 
         // task i before task j
         for (int i = 0; i < tasks_.tasks_no; ++i)
@@ -54,21 +56,52 @@ public:
             {
                 if (i != j)
                 {
-                    Gecode::BoolVarArgs i_is_before_j;
-                    for (int machine = 0; machine < tasks_.machine_no; ++machine)
+                    Gecode::BoolVarArgs i_is_exactly_before_j;
+
+                    i_is_exactly_before_j << Gecode::expr(*this, starts_matrix(0, j) == starts_matrix(0, i) + task_matrix(0, i));
+                    for (int machine = 1; machine < tasks_.machine_no; ++machine)
                     {
-                        i_is_before_j << Gecode::expr(*this, starts_matrix(machine, i) + task_matrix(machine, i) <= starts_matrix(machine, j));
+                        i_is_exactly_before_j << Gecode::expr(*this, starts_matrix(machine, j) == Gecode::max(
+                            starts_matrix(machine - 1, j) + task_matrix(machine - 1, j),
+                            starts_matrix(machine, i) + task_matrix(machine, i)
+                        ));
                     }
 
-                    Gecode::rel(*this, Gecode::BOT_EQV, i_is_before_j, 1);
-                    Gecode::rel(*this, (order_[i] < order_[j]) == i_is_before_j[0]);
+                    Gecode::BoolVar i_is_exactly_before_j_all(*this, 0, 1);
+                    Gecode::rel(*this, Gecode::BOT_AND, i_is_exactly_before_j, i_is_exactly_before_j_all);
+
+                    Gecode::rel(*this,
+                        (order_[i] + 1 == order_[j])
+                        >> (i_is_exactly_before_j_all)
+                    );
                 }
             }
+
+            Gecode::BoolVarArgs i_is_first;
+            i_is_first << Gecode::expr(*this, starts_matrix(0, i) == 0);
+            for (int machine = 1; machine < tasks_.machine_no; ++machine)
+            {
+                i_is_first << Gecode::expr(*this, starts_matrix(machine, i) == starts_matrix(machine - 1, i) + task_matrix(machine - 1, i));
+            }
+
+            Gecode::BoolVar i_is_first_all(*this, 0, 1);
+            Gecode::rel(*this, Gecode::BOT_AND, i_is_first, i_is_first_all);
+
+            Gecode::rel(*this,
+                (order_[i] == 0)
+                >> (i_is_first_all));
         }
 
         branchOnOrderAndStarts(*this, tasks_, cmax_, order_, starts_);
-        Gecode::branch(*this, starts_, Gecode::INT_VAR_MIN_MIN(), Gecode::INT_VAL_MIN());
-        Gecode::branch(*this, cmax_, Gecode::INT_VAL_MIN());
+        Gecode::IntVarArgs a;
+        for (const auto& orderVar : order_)
+        {
+            a << orderVar;
+        }
+        std::random_shuffle(a.begin(), a.end());
+
+        //Gecode::branch(*this, a, Gecode::INT_VAR_CHB_SIZE_MAX(), Gecode::INT_VAL_MIN());
+        //Gecode::branch(*this, a, Gecode::INT_VAR_CHB_MAX(), Gecode::INT_VAL_MIN());
     }
 
     FlowshopSpace(FlowshopSpace& other)
@@ -93,7 +126,26 @@ public:
     void print(std::ostream& os) const
     {
         os << "cmax: " << cmax_
-            << "\norder: " << order_ << std::endl;
+            << "\norder: " << order_
+            << "\nstarts:\n";
+
+        if (true)
+        {
+            os << std::flush;
+            return;
+        }
+
+        Gecode::Matrix<Gecode::IntVarArray> starts_matrix(starts_, tasks_.machine_no, tasks_.tasks_no);
+        for (int task = 0; task < tasks_.tasks_no; ++task)
+        {
+            for (int machine = 0; machine < tasks_.machine_no; ++machine)
+            {
+                os << starts_matrix(machine, task) << ", ";
+            }
+            os << "\n";
+        }
+
+        os << std::flush;
     }
 
     std::vector<int> deduceOrder() const
@@ -133,10 +185,9 @@ public:
 private:
     int get_est_cmax()
     {
-        //std::vector<int> order(tasks_.tasks_no, 0);
-        //std::iota(order.begin(), order.end(), 0);
-
-        return get_cmax(tasks_, johnson(tasks_));
+        int est = get_cmax(tasks_, johnson(tasks_));
+        std::cout << "est from johnson: " << est << std::endl;
+        return est;
     }
 
     const Tasks& tasks_;
@@ -145,45 +196,54 @@ private:
     Gecode::IntVarArray order_;
 };
 
-int main()
+int main(int argc, char** argv)
 {
-    std::srand(std::time(nullptr));
+    if (argc != 2)
+    {
+        std::cout << "usage: ???" << std::endl;
+        return -1;
+    }
 
-    const auto tasks = load_file("data.080");
+    constexpr bool USE_GIST = false;
+
+    //std::srand(std::time(nullptr));
+    std::srand(42);
+
+    const auto tasks = load_file(argv[1]);
     FlowshopSpace space(*tasks);
 
-
-    Gecode::Gist::Print<FlowshopSpace> p("Print solution");
-    Gecode::Gist::Options o;
-    o.inspect.click(&p);
-    Gecode::Gist::bab(&space, o);
-
-
-
-
-    /*
-    Gecode::Search::Options o;
-    //Gecode::Search::TimeStop timeStop(200 * 1000);
-    //o.stop = &timeStop;
-
-    Gecode::BAB<FlowshopSpace> engine(&space, o);
-    auto now = std::chrono::high_resolution_clock::now();
-
-    while (auto* solution = engine.next())
+    if (USE_GIST)
     {
-        auto order = solution->deduceOrder();
-
-        std::cout << "-- SOLUTION FOUND --\n";
-        solution->print(std::cout);
-        std::cout << "--------------------\n";
-        std::cout << "cmax from deduced order: " << get_cmax(*tasks, order) << '\n';
-
-        auto now2 = std::chrono::high_resolution_clock::now();
-        std::cout << "time passed: " << (std::chrono::duration_cast<std::chrono::milliseconds>(now2 - now).count() / 1000.0) << " sec\n";
-
-        std::cout << "--------------------" << std::endl;
-
-        delete solution;
+        Gecode::Gist::Print<FlowshopSpace> p("Print solution");
+        Gecode::Gist::Options o;
+        o.inspect.click(&p);
+        Gecode::Gist::bab(&space, o);
     }
-    */
+    else
+    {
+        Gecode::Search::Options o;
+        Gecode::Search::TimeStop stop(15 * 1000);
+        //o.stop = &stop;
+        Gecode::BAB<FlowshopSpace> engine(&space, o);
+        auto now = std::chrono::high_resolution_clock::now();
+
+        while (auto* solution = engine.next())
+        {
+            auto order = solution->deduceOrder();
+
+            assert(solution->cost().val() == get_cmax(*tasks, order));
+
+            std::cout << "-- SOLUTION FOUND --\n";
+            solution->print(std::cout);
+            std::cout << "--------------------\n";
+            std::cout << "cmax from deduced order: " << get_cmax(*tasks, order) << '\n';
+
+            auto now2 = std::chrono::high_resolution_clock::now();
+            std::cout << "time passed: " << (std::chrono::duration_cast<std::chrono::milliseconds>(now2 - now).count() / 1000.0) << " sec\n";
+
+            std::cout << "--------------------" << std::endl;
+
+            delete solution;
+        }
+    }
 }
